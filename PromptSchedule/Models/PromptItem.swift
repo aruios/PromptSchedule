@@ -11,7 +11,25 @@ nonisolated enum DeliveryState: String, Codable, Sendable {
     case queued, sending, sent, failed
 }
 
-/// One Claude session a prompt should be delivered to, with its own delivery state.
+/// How Claude's turn on a delivered prompt ended (Premium result tracking).
+nonisolated enum TaskOutcome: String, Codable, Sendable {
+    case done, needsInput, waitingPermission, interrupted
+
+    var label: String {
+        switch self {
+        case .done: "Done"
+        case .needsInput: "Needs your input"
+        case .waitingPermission: "Waiting for permission"
+        case .interrupted: "Interrupted"
+        }
+    }
+
+    /// Still Claude's turn: it's paused on a permission prompt, not finished.
+    var isFinal: Bool { self != .waitingPermission }
+}
+
+/// One Claude session a prompt should be delivered to, with its own delivery
+/// state and, once Claude has finished (Premium), the result of its turn.
 nonisolated struct PromptTarget: Codable, Hashable, Sendable {
     var pid: Int32
     var tty: String
@@ -19,10 +37,44 @@ nonisolated struct PromptTarget: Codable, Hashable, Sendable {
     var state: DeliveryState = .queued
     var error: String?
 
+    // Result tracking (Premium). Optional so queues saved by older versions still load.
+    /// Claude session ID at send time, used to find the transcript.
+    var sessionId: String?
+    /// Start of the prompt as sent, used to find it in the transcript.
+    var promptKey: String?
+    var sentAt: Date?
+    var completedAt: Date?
+    var outcome: TaskOutcome?
+    /// Short note on how the task ended.
+    var note: String?
+    var noteIsAI: Bool?
+    /// Claude's final reply for the turn.
+    var reply: String?
+    var durationMs: Int?
+
     init(session: ClaudeSession) {
         pid = session.pid
         tty = session.tty
         name = session.name
+    }
+
+    /// Delivered and being watched until Claude finishes. Independent of
+    /// `state`, so a repeating prompt that's already queued for its next run
+    /// still gets the result of the last one.
+    var isTracking: Bool {
+        sentAt != nil && completedAt == nil
+    }
+
+    mutating func clearResult() {
+        sessionId = nil
+        promptKey = nil
+        sentAt = nil
+        completedAt = nil
+        outcome = nil
+        note = nil
+        noteIsAI = nil
+        reply = nil
+        durationMs = nil
     }
 }
 
@@ -106,6 +158,11 @@ final class PromptItem {
     }
 
     func resetTargets() {
+        targets = targets.map { var t = $0; t.state = .queued; t.error = nil; t.clearResult(); return t }
+    }
+
+    /// Queues a repeating prompt's next run, keeping the last run's result until then.
+    func requeueForNextRun() {
         targets = targets.map { var t = $0; t.state = .queued; t.error = nil; return t }
     }
 }

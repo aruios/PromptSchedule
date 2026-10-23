@@ -19,7 +19,9 @@ struct PromptScheduleApp: App {
             PromptItem.self,
             PromptTemplate.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        // Unit tests run inside the app: keep them away from the real queue and sessions.
+        let isTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: isTesting)
 
         let container: ModelContainer
         do {
@@ -29,7 +31,8 @@ struct PromptScheduleApp: App {
         }
         Self.seedTemplates(in: container)
 
-        let dispatcher = Dispatcher(container: container)
+        let dispatcher = Dispatcher(container: container, autoStart: !isTesting)
+        Notifier.configure()
         sharedModelContainer = container
         _dispatcher = State(initialValue: dispatcher)
         QuickSendPanel.shared.configure(dispatcher: dispatcher, container: container)
@@ -51,6 +54,10 @@ struct PromptScheduleApp: App {
                 .modelContainer(sharedModelContainer)
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView()
+        }
     }
 
     /// Adds the starter templates once, on first launch.

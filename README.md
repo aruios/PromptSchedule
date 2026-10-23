@@ -21,9 +21,16 @@ A small macOS app for queueing prompts and sending them to one or more running
   `{{cwd}}`, `{{date}}` and `{{time}}` are filled in per session when sent; any other placeholder
   is asked for when the template is used.
 - **Reframe styles** – Concise, Step-by-step plan, Bug report, or your own custom instructions.
-- **Done notifications** – a notification with Claude's reply when a session finishes your prompt.
+- **Done notifications** – a notification with the result note when a session finishes your prompt,
+  with Show Result and Follow Up buttons.
 - **iTerm2 and tmux sessions** – in addition to Terminal.app.
 - **Menu bar quick send** and a global shortcut, **⌃⌥⌘P**, to send from anywhere.
+- **Task results** – each prompt is followed until Claude finishes. The queue's Result column
+  shows a short note on the outcome (Done / Needs your input / Waiting for permission /
+  Interrupted); click it for Claude's full reply, with Copy, Show in Terminal and Follow Up.
+  Results come from Claude Code's transcripts, survive restarts and follow continued sessions.
+  Optional: AI-written notes (Claude Haiku via `claude -p`) and Claude Code `Stop` /
+  `Notification` hooks for instant results — both in Settings (⌘,).
 
 Premium is currently a simple on/off switch; licensing comes later.
 

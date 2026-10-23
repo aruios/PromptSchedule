@@ -96,6 +96,61 @@ enum SessionSender {
         return message.isEmpty ? "osascript failed" : message
     }
 
+    // MARK: - Show in terminal
+
+    /// Brings the session's tab to the front. Only used when the user asks for it.
+    static func reveal(tty: String, via terminal: TerminalKind) async throws {
+        let script: String
+        switch terminal {
+        case .iTerm:
+            script = """
+            on run argv
+                set targetTTY to item 1 of argv
+                tell application "iTerm2"
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            repeat with s in sessions of t
+                                if tty of s is targetTTY then
+                                    select w
+                                    select t
+                                    select s
+                                    activate
+                                    return
+                                end if
+                            end repeat
+                        end repeat
+                    end repeat
+                end tell
+                error "No iTerm2 session found for " & targetTTY
+            end run
+            """
+        default:
+            // tmux sessions live inside a Terminal tab with the pane's tty, so try Terminal.
+            script = """
+            on run argv
+                set targetTTY to item 1 of argv
+                tell application "Terminal"
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            if tty of t is targetTTY then
+                                set selected of t to true
+                                set index of w to 1
+                                activate
+                                return
+                            end if
+                        end repeat
+                    end repeat
+                    activate
+                end tell
+            end run
+            """
+        }
+        let result = try await Shell.run("/usr/bin/osascript", ["-e", script, tty], timeout: 30)
+        guard result.status == 0 else {
+            throw ShellError.failed(friendlyError(result.error, app: terminal == .iTerm ? "iTerm2" : "Terminal"))
+        }
+    }
+
     // MARK: - tmux
 
     private static func sendToTmux(_ text: String, tty: String) async throws {

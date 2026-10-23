@@ -27,6 +27,11 @@ struct ContentView: View {
     @State private var sheet: SheetRequest?
     @State private var upsell: String?
     @State private var isStartSessionPromptShown = false
+    /// Item whose result is shown in the side panel (Premium).
+    @State private var inspectedItemID: PersistentIdentifier?
+    @State private var isResultPanelShown = false
+    @FocusState private var isComposerFocused: Bool
+    private let router = AppRouter.shared
     /// A session we just launched, to select automatically once it shows up.
     @State private var pendingLaunch: (folder: String, existing: Set<Int32>)?
 
@@ -60,6 +65,17 @@ struct ContentView: View {
             queueTable
         }
         .frame(minWidth: 900, minHeight: 580)
+        .inspector(isPresented: $isResultPanelShown) {
+            Group {
+                if let item = items.first(where: { $0.persistentModelID == inspectedItemID }), isPremium {
+                    ResultPanel(item: item, onFollowUp: followUp)
+                } else {
+                    ContentUnavailableView("No result selected", systemImage: "text.bubble",
+                                           description: Text("Click a note in the Result column."))
+                }
+            }
+            .inspectorColumnWidth(min: 320, ideal: 400, max: 600)
+        }
         .toolbar { toolbar }
         .sheet(item: $sheet, content: sheetContent)
         .alert("Premium feature", isPresented: Binding(get: { upsell != nil }, set: { if !$0 { upsell = nil } })) {
@@ -83,6 +99,8 @@ struct ContentView: View {
             selectedSessions.formIntersection(Set(dispatcher.sessions.map(\.id)))
             selectLaunchedSession()
         }
+        .onChange(of: router.request) { handleRouterRequest() }
+        .onAppear { handleRouterRequest() }
     }
 
     // MARK: - Header
@@ -90,7 +108,8 @@ struct ContentView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Text("Send to:").foregroundStyle(.secondary)
-            SessionPicker(sessions: dispatcher.sessions, selection: $selectedSessions, isPremium: isPremium)
+            SessionPicker(sessions: dispatcher.sessions, selection: $selectedSessions, isPremium: isPremium,
+                          notes: isPremium ? latestNotes : [:])
             Button {
                 Task { await dispatcher.refreshSessions() }
             } label: {
@@ -158,6 +177,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $draft)
+                    .focused($isComposerFocused)
                     .font(.body)
                     .frame(minHeight: 90, maxHeight: 160)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
@@ -303,6 +323,11 @@ struct ContentView: View {
             }
             .width(min: 90, ideal: 110)
 
+            TableColumn("Result") { item in
+                ResultCell(item: item, isPremium: isPremium) { showResult(item) }
+            }
+            .width(min: 160, ideal: 260)
+
             TableColumn("") { item in
                 HStack(spacing: 6) {
                     Button { dispatcher.send([item]) } label: {
@@ -327,6 +352,9 @@ struct ContentView: View {
             let chosen = items.filter { ids.contains($0.persistentModelID) }
             Button("Send Now") { dispatcher.send(chosen) }
             if chosen.count == 1, let item = chosen.first {
+                Button("Show Result") {
+                    if isPremium { showResult(item) } else { upsell = "Task results" }
+                }
                 Button("Edit / Reframe…") { sheet = .edit(item) }
                 Button("Schedule…") {
                     if isPremium { sheet = .schedule(item) } else { upsell = "Scheduling" }
@@ -445,6 +473,44 @@ struct ContentView: View {
         draftSchedule = nil
         draftRepeat = .none
         if sendNow { dispatcher.send([item]) }
+    }
+
+    // MARK: - Results (Premium)
+
+    private func showResult(_ item: PromptItem) {
+        inspectedItemID = item.persistentModelID
+        tableSelection = [item.persistentModelID]
+        isResultPanelShown = true
+    }
+
+    /// Selects the session and puts the cursor in the composer for a follow-up prompt.
+    private func followUp(_ pid: Int32) {
+        guard dispatcher.session(for: pid) != nil else { return }
+        selectedSessions = [pid]
+        isComposerFocused = true
+    }
+
+    /// The most recent note for each session, shown in the session picker.
+    private var latestNotes: [Int32: String] {
+        var notes: [Int32: (Date, String)] = [:]
+        for item in items {
+            for target in item.targets {
+                guard let note = target.note, let date = target.completedAt ?? target.sentAt else { continue }
+                if notes[target.pid].map({ $0.0 < date }) ?? true { notes[target.pid] = (date, note) }
+            }
+        }
+        return notes.mapValues(\.1)
+    }
+
+    private func handleRouterRequest() {
+        guard let request = router.request else { return }
+        router.request = nil
+        switch request {
+        case .showResult(let id):
+            if let item = items.first(where: { $0.persistentModelID == id }) { showResult(item) }
+        case .followUp(let pid):
+            followUp(pid)
+        }
     }
 
     /// Selects the session we launched as soon as the scanner finds it.

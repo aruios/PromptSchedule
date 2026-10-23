@@ -10,6 +10,8 @@ struct SessionPicker: View {
     let sessions: [ClaudeSession]
     @Binding var selection: Set<Int32>
     var isPremium: Bool
+    /// Latest result note per session (Premium).
+    var notes: [Int32: String] = [:]
     @State private var isOpen = false
 
     var body: some View {
@@ -61,6 +63,14 @@ struct SessionPicker: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if let note = notes[session.pid] {
+                        Text(note)
+                            .font(.caption)
+                            .italic()
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .help(note)
+                    }
                 }
             }
         }
