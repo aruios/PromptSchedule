@@ -12,6 +12,9 @@ struct ReframeSheet: View {
     let onUse: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(Premium.key) private var isPremium = false
+    @AppStorage(Premium.reframeStyleKey) private var styleRaw = ReframeStyle.standard.rawValue
+    @AppStorage(Premium.customReframeKey) private var customInstructions = ""
     @State private var revised: String
     @State private var isWorking = false
     @State private var errorMessage: String?
@@ -23,9 +26,26 @@ struct ReframeSheet: View {
         _revised = State(initialValue: current ?? original)
     }
 
+    /// Premium styles fall back to Standard when Premium is off.
+    private var style: ReframeStyle {
+        let chosen = ReframeStyle(rawValue: styleRaw) ?? .standard
+        return chosen.isPremium && !isPremium ? .standard : chosen
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Reframe Prompt").font(.title2.bold())
+            HStack {
+                Text("Reframe Prompt").font(.title2.bold())
+                Spacer()
+                stylePicker
+            }
+
+            if style == .custom {
+                TextField("Custom instructions, e.g. “Write it as a user story with acceptance criteria”",
+                          text: $customInstructions, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...3)
+            }
 
             HStack(alignment: .top, spacing: 12) {
                 column("Original") {
@@ -89,6 +109,30 @@ struct ReframeSheet: View {
         }
     }
 
+    private var stylePicker: some View {
+        Menu {
+            ForEach(ReframeStyle.allCases) { option in
+                Button {
+                    styleRaw = option.rawValue
+                } label: {
+                    if option == style {
+                        Label(option.label, systemImage: "checkmark")
+                    } else if option.isPremium && !isPremium {
+                        Label(option.label, systemImage: "crown.fill")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+                .disabled(option.isPremium && !isPremium)
+            }
+        } label: {
+            Label("Style: \(style.label)", systemImage: "wand.and.stars")
+        }
+        .fixedSize()
+        .disabled(isWorking)
+        .help(isPremium ? "How the prompt is rewritten" : "More styles with Premium")
+    }
+
     private func column<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.headline).foregroundStyle(.secondary)
@@ -102,7 +146,7 @@ struct ReframeSheet: View {
         errorMessage = nil
         defer { isWorking = false }
         do {
-            revised = try await PromptReframer.reframe(original)
+            revised = try await PromptReframer.reframe(original, style: style, custom: customInstructions)
         } catch {
             errorMessage = "Reframe failed: \(error.localizedDescription)"
         }

@@ -10,24 +10,57 @@ import SwiftData
 
 @main
 struct PromptScheduleApp: App {
-    var sharedModelContainer: ModelContainer = {
+    let sharedModelContainer: ModelContainer
+    @State private var dispatcher: Dispatcher
+    @AppStorage(Premium.key) private var isPremium = false
+
+    init() {
         let schema = Schema([
             PromptItem.self,
+            PromptTemplate.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
+        let container: ModelContainer
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            container = try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
-    }()
+        Self.seedTemplates(in: container)
+
+        let dispatcher = Dispatcher(container: container)
+        sharedModelContainer = container
+        _dispatcher = State(initialValue: dispatcher)
+        QuickSendPanel.shared.configure(dispatcher: dispatcher, container: container)
+        HotKey.shared.setEnabled(Premium.isOn)
+    }
 
     var body: some Scene {
         Window("PromptSchedule", id: "main") {
             ContentView()
+                .environment(dispatcher)
         }
         .modelContainer(sharedModelContainer)
-        .defaultSize(width: 980, height: 680)
+        .defaultSize(width: 1040, height: 700)
+
+        // Premium: quick send from the menu bar.
+        MenuBarExtra("PromptSchedule", systemImage: "paperplane.fill", isInserted: $isPremium) {
+            QuickSendView()
+                .environment(dispatcher)
+                .modelContainer(sharedModelContainer)
+        }
+        .menuBarExtraStyle(.window)
+    }
+
+    /// Adds the starter templates once, on first launch.
+    private static func seedTemplates(in container: ModelContainer) {
+        let key = "didSeedTemplates"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        for (name, body) in PromptTemplate.starters {
+            container.mainContext.insert(PromptTemplate(name: name, body: body))
+        }
+        try? container.mainContext.save()
+        UserDefaults.standard.set(true, forKey: key)
     }
 }
