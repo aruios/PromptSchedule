@@ -5,11 +5,14 @@
 
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 
 /// Delivers a prompt to a Claude Code session in the terminal that hosts it.
 ///
-/// - Terminal.app / iTerm2: select the tab owning the session's tty, paste the
-///   prompt (bracketed paste keeps multi-line prompts together) and press Return.
+/// - Terminal.app / iTerm2: select the tab owning the session's tty (AppleScript),
+///   then press ⌘V and Return from this app (bracketed paste keeps multi-line
+///   prompts together). The keys are posted by PromptSchedule itself, so they
+///   use PromptSchedule's own Accessibility permission.
 /// - tmux: paste straight into the pane with `paste-buffer -p`; no focus change
 ///   or Accessibility permission needed.
 enum SessionSender {
@@ -25,9 +28,9 @@ enum SessionSender {
         }
         switch terminal {
         case .terminal:
-            try await paste(text, tty: target.tty, selectScript: terminalSelect, processName: "Terminal")
+            try await paste(text, tty: target.tty, selectScript: terminalSelect, app: "Terminal", bundleID: "com.apple.Terminal")
         case .iTerm:
-            try await paste(text, tty: target.tty, selectScript: iTermSelect, processName: "iTerm2")
+            try await paste(text, tty: target.tty, selectScript: iTermSelect, app: "iTerm2", bundleID: "com.googlecode.iterm2")
         case .tmux:
             try await sendToTmux(text, tty: target.tty)
         case .unsupported:
@@ -77,36 +80,59 @@ enum SessionSender {
     end tell
     """
 
-    private static func paste(_ text: String, tty: String, selectScript: String, processName: String) async throws {
+    private static func paste(_ text: String, tty: String, selectScript: String, app: String, bundleID: String) async throws {
+        // Check first, so a missing permission doesn't pull the terminal to the front for nothing.
+        guard hasAccessibility() else {
+            throw ShellError.failed("Keystrokes blocked. Enable PromptSchedule in System Settings › Privacy & Security › Accessibility, then quit and reopen PromptSchedule.")
+        }
+
+        // AppleScript only brings the right tab to the front; it needs Automation, not Accessibility.
         let script = """
         on run argv
             set targetTTY to item 1 of argv
             set found to false
             \(selectScript)
-            delay 0.3
-            tell application "System Events"
-                tell process "\(processName)" to set frontmost to true
-                keystroke "v" using command down
-                delay 0.5
-                key code 36
-            end tell
-            delay 0.2
         end run
         """
+        // Long timeout: the first send waits on the macOS Automation permission dialog.
+        let result = try await Shell.run("/usr/bin/osascript", ["-e", script, tty], timeout: 120)
+        guard result.status == 0 else {
+            throw ShellError.failed(friendlyError(result.error, app: app))
+        }
+        defer { NSApp.activate() }
+
+        // Keystrokes go to whichever app is frontmost, so make sure it's the terminal.
+        guard await waitForFrontmost(bundleID) else {
+            throw ShellError.failed("\(app) didn't come to the front, so the prompt wasn't typed.")
+        }
 
         let pasteboard = NSPasteboard.general
         let saved = snapshot(of: pasteboard)
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        defer {
-            restore(saved, to: pasteboard)
-            NSApp.activate()
-        }
+        defer { restore(saved, to: pasteboard) }
 
-        // Long timeout: the first send waits on macOS permission dialogs.
-        let result = try await Shell.run("/usr/bin/osascript", ["-e", script, tty], timeout: 120)
-        guard result.status == 0 else {
-            throw ShellError.failed(friendlyError(result.error, app: processName))
+        pressKey(CGKeyCode(kVK_ANSI_V), flags: .maskCommand)
+        // Let the terminal read the clipboard and Claude Code take the paste before submitting.
+        try await Task.sleep(for: .milliseconds(500))
+        pressKey(CGKeyCode(kVK_Return))
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    private static func waitForFrontmost(_ bundleID: String) async -> Bool {
+        for _ in 0..<20 {
+            if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return false
+    }
+
+    private static func pressKey(_ key: CGKeyCode, flags: CGEventFlags = []) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        for isDown in [true, false] {
+            let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: isDown)
+            event?.flags = flags
+            event?.post(tap: .cghidEventTap)
         }
     }
 
@@ -114,9 +140,6 @@ enum SessionSender {
         let message = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if message.contains("-1743") {
             return "Not allowed to control \(app). Enable it in System Settings › Privacy & Security › Automation."
-        }
-        if message.contains("-1719") || message.contains("-25211") || message.contains("assistive access") {
-            return "Keystrokes blocked. Enable PromptSchedule in System Settings › Privacy & Security › Accessibility."
         }
         return message.isEmpty ? "osascript failed" : message
     }
