@@ -103,7 +103,8 @@ enum SessionSender {
             NSApp.activate()
         }
 
-        let result = try await Shell.run("/usr/bin/osascript", ["-e", script, tty])
+        // Long timeout: the first send waits on macOS permission dialogs.
+        let result = try await Shell.run("/usr/bin/osascript", ["-e", script, tty], timeout: 120)
         guard result.status == 0 else {
             throw ShellError.failed(friendlyError(result.error, app: processName))
         }

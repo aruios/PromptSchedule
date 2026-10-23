@@ -47,7 +47,7 @@ enum SessionLauncher {
             """
         }
 
-        let result = try await Shell.run("/usr/bin/osascript", ["-e", script, command])
+        let result = try await Shell.run("/usr/bin/osascript", ["-e", script, command], timeout: 120)
         guard result.status == 0 else {
             let message = result.error.trimmingCharacters(in: .whitespacesAndNewlines)
             if message.contains("-1743") {

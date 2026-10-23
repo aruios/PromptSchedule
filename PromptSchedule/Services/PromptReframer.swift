@@ -71,7 +71,8 @@ nonisolated enum PromptReframer {
             claude,
             ["-p", "--model", "sonnet", instructions(style: style, custom: custom) + "\n" + prompt],
             in: FileManager.default.temporaryDirectory,
-            environment: environment
+            environment: environment,
+            timeout: 180
         )
         let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard result.status == 0, !output.isEmpty else {
