@@ -54,7 +54,6 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !dispatcher.hasAccessibility { accessibilityBanner }
             header
             composer
             Divider()
@@ -87,17 +86,6 @@ struct ContentView: View {
     }
 
     // MARK: - Header
-
-    private var accessibilityBanner: some View {
-        HStack {
-            Image(systemName: "hand.raised.fill")
-            Text("PromptSchedule needs Accessibility access to paste prompts into Terminal.")
-            Spacer()
-            Button("Grant Access") { dispatcher.requestAccessibility() }
-        }
-        .padding(10)
-        .background(.yellow.opacity(0.25))
-    }
 
     private var header: some View {
         HStack(spacing: 10) {

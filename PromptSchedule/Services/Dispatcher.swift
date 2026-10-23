@@ -21,7 +21,6 @@ import SwiftData
 final class Dispatcher {
     private(set) var sessions: [ClaudeSession] = []
     private(set) var isSending = false
-    private(set) var hasAccessibility = SessionSender.hasAccessibility()
     /// False until the first scan finishes, so an empty list isn't mistaken for "no sessions".
     private(set) var hasScanned = false
 
@@ -52,11 +51,6 @@ final class Dispatcher {
     func refreshSessions() async {
         sessions = await SessionScanner.scan()
         hasScanned = true
-        hasAccessibility = SessionSender.hasAccessibility()
-    }
-
-    func requestAccessibility() {
-        hasAccessibility = SessionSender.hasAccessibility(prompt: true)
     }
 
     func session(for pid: Int32) -> ClaudeSession? {

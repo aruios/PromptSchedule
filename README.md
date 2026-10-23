@@ -29,10 +29,13 @@ Premium is currently a simple on/off switch; licensing comes later.
 
 ## How sending works
 
-- **Terminal.app / iTerm2** – selects the tab whose tty matches the session, pastes the prompt
-  (bracketed paste keeps multi-line prompts together) and presses Return. Your clipboard is
-  restored afterwards.
-- **tmux** – pastes straight into the pane with `tmux paste-buffer -p`; no focus change needed.
+Prompts are written straight into the session's input in the background, wrapped in
+bracketed-paste markers so a multi-line prompt arrives as one message, then submitted.
+The terminal is never brought to the front.
+
+- **Terminal.app** – `do script … in <tab>` on the tab whose tty matches the session.
+- **iTerm2** – `write text` on the matching session.
+- **tmux** – `tmux paste-buffer -p` into the pane, then Enter.
 
 Idle / busy status and the last reply come from the files Claude Code keeps in
 `~/.claude/sessions/` and `~/.claude/projects/`.
@@ -42,8 +45,9 @@ Idle / busy status and the last reply come from the files Claude Code keeps in
 - macOS 26.5+, Xcode 26
 - Claude Code CLI installed (`claude` in `~/.local/bin`, Homebrew, or on your PATH)
 
-On first send macOS asks for permission to control **Terminal** / **iTerm2** and **System Events**
-(Automation) and for **Accessibility** access. App Sandbox is disabled because the app runs
+On first send macOS asks once for permission to control **Terminal** / **iTerm2** (Automation).
+Prompts are delivered in the background: the terminal stays where it is, and the clipboard and
+keyboard aren't touched. App Sandbox is disabled because the app runs
 `ps`, `lsof`, `osascript`, `tmux` and `claude`, so it is distributed outside the Mac App Store.
 
 ## Building a release
