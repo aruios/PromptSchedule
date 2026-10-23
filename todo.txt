@@ -1,0 +1,88 @@
+PromptSchedule – Mobile integration TODO
+=========================================
+
+Idea: Claude sessions run in terminals on the Mac, so the iPhone is a remote
+control. The Mac app keeps doing the sending; the phone hands it work and shows
+status.
+
+  iPhone app  ->  iCloud (private database)  <->  Mac PromptSchedule  ->  Terminal / Claude sessions
+
+Transport: iCloud / CloudKit first (works anywhere, no server, private to the
+user). Same-Wi-Fi instant mode later as an extra.
+
+
+DECISIONS (before Phase 1)
+--------------------------
+[ ] Paid Apple Developer account ($99/yr) – needed for iCloud sync and push
+    notifications; the free personal team can't use them. Also needed later to
+    sell the Mac app (Developer ID).
+[ ] Final bundle IDs – the iCloud container is named after it
+    (e.g. iCloud.com.ard.PromptSchedule) and can't be renamed later.
+[ ] Security – add "Phone can queue but not send" setting on the Mac and an
+    allowed-devices list (sessions run in auto mode).
+[ ] Distribution – iPhone app on the App Store; Mac app stays outside it.
+    Cross-platform Premium unlock belongs with the licensing work.
+[ ] Free or Premium – suggestion: phone app is Premium, Reminders quick win is free.
+
+
+PHASE 0 – Quick win: send from iPhone via Apple Reminders (no paid account, ~1 day)
+---------------------------------------------------------------------------------
+[ ] Mac app watches a Reminders list named "Claude" (EventKit, Reminders permission)
+[ ] New reminder -> queued prompt; "@<session>" in the notes picks the session,
+    otherwise a default session (setting)
+[ ] Works with Siri: "Hey Siri, add 'fix the build errors' to my Claude list"
+[ ] After sending: tick the reminder off and write Claude's reply into its notes
+[ ] Failed sends: leave the reminder open and add the error to its notes
+[ ] Settings: list name, default session, on/off switch
+
+
+PHASE 1 – Sync foundation + read-only iPhone app (paid account)
+---------------------------------------------------------------
+[ ] Move shared code (PromptItem, PromptTemplate, RepeatRule, TemplateEngine)
+    into a shared Swift package used by both apps
+[ ] Make models CloudKit-compatible (defaults/optionals, no unique constraints)
+[ ] Turn on SwiftData iCloud sync for the queue and templates
+[ ] Tag each prompt target with the Mac it belongs to (support several Macs)
+[ ] Mac uploads its running sessions (status, folder, terminal, last reply)
+    whenever something changes
+[ ] Mac sends a regular "online" signal; phone shows "Mac offline" after ~60s
+[ ] New iOS app target in the same project
+[ ] iPhone screens: Sessions (status dots, last reply) and Queue (read-only)
+
+
+PHASE 2 – Send from the phone + notifications
+---------------------------------------------
+[ ] Compose screen: pick sessions, type or dictate, templates, Send now / Queue / Schedule
+[ ] Prompts added on the phone flow into the Mac Dispatcher's queue
+[ ] Per-session statuses sync back (queued / sending / sent / failed)
+[ ] Swipe actions on the phone: retry, delete
+[ ] "Claude finished · <folder>" push notification with the reply; tap opens it
+[ ] Mac: launch at login (option)
+[ ] Mac: prevent sleep while prompts are waiting (option)
+
+
+PHASE 3 – Attachments, reframe, new sessions from the phone
+-----------------------------------------------------------
+[ ] Photo attachments from the phone (builds on the attachments plan)
+[ ] Reframe from the phone: request syncs to Mac, Mac runs claude -p, result syncs back
+[ ] Start a new session remotely from a recent folder (Premium, Mac-side approval setting)
+
+
+PHASE 4 – iOS extras
+--------------------
+[ ] Home-screen widgets: session status, queue count
+[ ] Lock-screen Live Activity: "Claude is working" for a session
+[ ] Siri / Shortcuts actions (App Intents): "Send prompt to Claude"
+[ ] Apple Watch: dictate and send a prompt
+
+
+PHASE 5 – Optional
+------------------
+[ ] Instant delivery on the same Wi-Fi (local network) alongside iCloud sync
+
+
+RISKS / NOTES
+-------------
+- Mac must be awake with PromptSchedule running; phone shows Mac offline otherwise.
+- iCloud sync usually takes 2–10 seconds, so "Send now" from the phone isn't instant.
+- Prompts and replies live in the user's private iCloud database.
